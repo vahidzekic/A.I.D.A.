@@ -1,4 +1,4 @@
-<![CDATA[<div align="center">
+<div align="center">
 
 # 🧠 A.I.D.A.
 
@@ -408,4 +408,3 @@ This project is licensed under the MIT License. See [LICENSE](LICENSE) for detai
 *"The best way to understand a system is to build it from nothing."*
 
 </div>
-]]>
