@@ -1,0 +1,32 @@
+# ── Virtual Environment ──────────────────────────────
+aida-venv/
+venv/
+.venv/
+env/
+
+# ── Python ───────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+dist/
+build/
+*.egg
+
+# ── Training Artifacts ───────────────────────────────
+checkpoints/
+*.pt
+*.pth
+*.bin
+*.safetensors
+
+# ── OS ───────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+
+# ── IDE ──────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
