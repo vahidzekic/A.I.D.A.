@@ -604,70 +604,52 @@ class NeuroSymbolicBabyLLM(nn.Module):
         return logits, loss
 
     @torch.no_grad()
-    def generate(
-        self,
-        token_ids: torch.Tensor,
-        max_new_tokens: int = 100,
-        temperature: float = 1.0,
-        top_k: int | None = None,
-    ) -> torch.Tensor:
+    def generate(self, idx, max_new_tokens, temperature=0.3, top_k=20):
         """
-        Autoregressive text generation.
+        Clinically stable autoregressive generation.
 
-        The model generates ONE token at a time:
-          1. Feed the current sequence through the model → get logits
-          2. Take logits for the LAST position only (next-token prediction)
-          3. Apply temperature scaling and optional top-k filtering
-          4. Sample from the distribution (or take argmax)
-          5. Append the new token and repeat
+        - temperature=0.3: Near-deterministic but allows minor variation
+        - top_k=20: Only considers the 20 most likely tokens
+        - Tag breaker: Aborts if model enters XML/HTML hallucination loop
 
         Args:
-            token_ids:      [B, T] — initial prompt token IDs
+            idx:            [B, T] — initial prompt token IDs
             max_new_tokens: how many tokens to generate
-            temperature:    >1.0 = more random, <1.0 = more deterministic
-            top_k:          if set, only sample from top-k highest prob tokens
+            temperature:    0.3 = clinically precise (lower = more deterministic)
+            top_k:          20 = strict vocabulary pruning
 
         Returns:
-            [B, T + max_new_tokens] — the full sequence with generated tokens
+            [B, T + generated] — the full sequence with generated tokens
         """
-        self.eval()  # Disable dropout for generation
+        self.eval()
 
         for _ in range(max_new_tokens):
-            # Crop to max_seq_len if the sequence has grown too long.
-            # We keep the MOST RECENT tokens (sliding window).
-            context = token_ids if token_ids.size(1) <= self.config.max_seq_len \
-                else token_ids[:, -self.config.max_seq_len:]
+            # Sliding window — crop to max context
+            idx_cond = idx[:, -self.config.max_seq_len:]
 
-            # Forward pass — only need logits, not loss
-            logits, _ = self(context)
+            # Forward pass
+            logits, _ = self(idx_cond)
+            logits = logits[:, -1, :]  # [B, V] — last position only
 
-            # Take logits for the LAST token position only
-            # [B, T, V] → [B, V]
-            logits = logits[:, -1, :]  # [B, V]
+            # Stabilizacija izbora (0.3 je klinički precizno)
+            logits = logits / temperature
 
-            # Temperature scaling: divide logits by temperature before softmax
-            # Higher temp → flatter distribution → more randomness
-            # Lower temp → sharper distribution → more deterministic
-            if temperature != 1.0:
-                logits = logits / temperature
-
-            # Top-k filtering: zero out all logits except the top-k
+            # Top-K uzima samo najsigurnija slova
             if top_k is not None:
-                # Get the k-th largest value as threshold
-                top_k_values, _ = torch.topk(logits, min(top_k, logits.size(-1)))
-                threshold = top_k_values[:, -1].unsqueeze(-1)  # [B, 1]
-                logits[logits < threshold] = float('-inf')
+                v, _ = torch.topk(logits, min(top_k, logits.size(-1)))
+                logits[logits < v[:, [-1]]] = -float('Inf')
 
-            # Convert logits to probabilities
-            probs = torch.softmax(logits, dim=-1)  # [B, V]
+            probs = F.softmax(logits, dim=-1)
+            idx_next = torch.multinomial(probs, num_samples=1)
+            idx = torch.cat((idx, idx_next), dim=1)
 
-            # Sample one token from the distribution
-            next_token = torch.multinomial(probs, num_samples=1)  # [B, 1]
+            # Sigurnosni prekid: Ako model poludi i počne da izbacuje
+            # previše tagova, prekidamo petlju!
+            raw = "".join([chr(min(max(t, 0), 1114111)) for t in idx[0].tolist()])
+            if raw.count('<') > 4 or raw.count('>') > 4:
+                break
 
-            # Append to the sequence
-            token_ids = torch.cat([token_ids, next_token], dim=1)  # [B, T+1]
-
-        return token_ids
+        return idx
 
 
 # ═══════════════════════════════════════════════════════════════════════════

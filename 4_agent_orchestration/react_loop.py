@@ -181,9 +181,9 @@ class ReActAgent:
         tokenizer: BPETokenizer,
         registry: ToolRegistry,
         max_steps: int = 5,
-        max_new_tokens: int = 150,
-        temperature: float = 0.7,
-        top_k: int = 50,
+        max_new_tokens: int = 200,
+        temperature: float = 0.3,
+        top_k: int = 20,
         verbose: bool = True,
     ):
         """
@@ -320,14 +320,13 @@ class ReActAgent:
             device=next(self.model.parameters()).device,
         )
 
-        # 4. Generate
-        with torch.no_grad():
-            output_ids = self.model.generate(
-                prompt_tensor,
-                max_new_tokens=self.max_new_tokens,
-                temperature=self.temperature,
-                top_k=self.top_k,
-            )
+        # 4. Generate — KLINIČKA PRECIZNOST: temp=0.3, top_k=20, bez penalizacije
+        output_ids = self.model.generate(
+            prompt_tensor,
+            max_new_tokens=self.max_new_tokens,
+            temperature=self.temperature,
+            top_k=self.top_k,
+        )
 
         # 5. Decode only the NEW tokens (exclude the prompt)
         new_token_ids = output_ids[0, len(prompt_ids):].tolist()
